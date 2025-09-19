@@ -1,12 +1,13 @@
 import os
 import tempfile
+from contextlib import AsyncExitStack
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
 
 from serving.config import Config, ConfigModel
-from serving.serv import ConfigurationError, Serv
+from serving.serv import APP_EXIT_STACK_QUALIFIER, ConfigurationError, Serv
 
 
 class DatabaseModel(ConfigModel):
@@ -192,6 +193,46 @@ DatabaseModel:
             assert isinstance(db_model, DatabaseModel)
             assert db_model.host == "db.example.com"
             assert db_model.port == 3306
+
+    def test_app_exit_stack_available_with_qualifier(self):
+        yaml_content = """
+environment: prod
+"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_file = Path(tmpdir) / "serving.prod.yaml"
+            config_file.write_text(yaml_content)
+
+            serv = Serv(working_directory=tmpdir)
+
+            app_stack = serv.container.get(AsyncExitStack, qualifier=APP_EXIT_STACK_QUALIFIER)
+
+            assert isinstance(app_stack, AsyncExitStack)
+            assert app_stack is serv._app_exit_stack
+
+    @pytest.mark.asyncio
+    async def test_app_exit_stack_closes_on_shutdown(self):
+        yaml_content = """
+environment: prod
+"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_file = Path(tmpdir) / "serving.prod.yaml"
+            config_file.write_text(yaml_content)
+
+            serv = Serv(working_directory=tmpdir)
+            app_stack = serv.container.get(AsyncExitStack, qualifier=APP_EXIT_STACK_QUALIFIER)
+
+            cleanup_called = False
+
+            async def cleanup():
+                nonlocal cleanup_called
+                cleanup_called = True
+
+            app_stack.push_async_callback(cleanup)
+
+            await serv.app.router.startup()
+            await serv.app.router.shutdown()
+
+            assert cleanup_called is True
 
     def test_environment_priority(self):
         """Test that explicit environment parameter takes priority over env var."""

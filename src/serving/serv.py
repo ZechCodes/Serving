@@ -1,5 +1,6 @@
 import importlib
 import os
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from inspect import get_annotations
 from pathlib import Path
@@ -34,6 +35,9 @@ from serving.router import RouterConfig, Router
 from serving.session import SessionConfig, SessionProvider, Session
 from serving.serv_middleware import ServMiddleware
 from serving.csrf_middleware import CSRFMiddleware
+
+
+APP_EXIT_STACK_QUALIFIER = "app"
 
 
 @dataclass
@@ -112,6 +116,8 @@ class Serv:
         handle_session_param_types.register_hook(self.registry)
 
         self.container = self.registry.create_container()
+        self._app_exit_stack = AsyncExitStack()
+        self.container.add(AsyncExitStack, self._app_exit_stack, qualifier=APP_EXIT_STACK_QUALIFIER)
         with self.container:
             # Determine environment
             self.environment = self._get_environment(environment)
@@ -153,6 +159,8 @@ class Serv:
                     500: general_exception_handler,
                 },
             )
+
+        self.app.add_event_handler("shutdown", self._app_exit_stack.aclose)
 
         # Store serv instance in app state for exception handlers
         self.app.state.serv = self
@@ -252,18 +260,7 @@ class Serv:
                 dir_path = base_dir / dir_path
 
             # When serving assets directly, set Cache-Control on all responses under the mount.
-            if serve_assets:
-                async def static_app(*args):
-                    try:
-                        result = await StaticFiles(directory=str(dir_path))(*args)
-                        print("RESULT", result.status_code)
-                        return result
-                    except Exception as e:
-                        print(e)
-                    finally:
-                        print("Static app done")
-            else:
-                static_app = Starlette()
+            static_app = StaticFiles(directory=str(dir_path)) if serve_assets else Starlette()
             routes.append(
                 Mount(
                     static_config.mount,

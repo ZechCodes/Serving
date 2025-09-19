@@ -13,7 +13,13 @@ These are always enabled by Serving when constructing the Starlette app.
 ## ServMiddleware Behavior
 
 - Opens a DI container branch per request and preloads `Request` and response accumulator
+- Injects an `AsyncExitStack` into the branched container so request-scoped resources can register async cleanups. The stack is entered before the endpoint runs and is closed automatically when the response finishes.
 - Lets helpers like `set_header()`, `set_status_code()`, `set_cookie()`, and `redirect()` affect the live response
+
+## Application Exit Stack
+
+- The application container registers an `AsyncExitStack` with qualifier `"app"`. Pull it via `container.get(AsyncExitStack, qualifier="app")` when you need to tie background tasks or long-lived resources (database pools, message consumers, etc.) to the Starlette app lifecycle.
+- Serving wires the stack into Starlette's `shutdown` event, so anything you add with `push_async_callback` or `enter_async_context` is cleaned up automatically during graceful shutdown.
 
 ## CSRF
 
