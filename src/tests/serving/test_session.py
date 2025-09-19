@@ -1,7 +1,7 @@
 from typing import Annotated
 
-from bevy import auto_inject, injectable, get_registry
-from bevy.registries import Registry
+import pytest
+from bevy import get_registry
 from starlette.requests import Request
 
 from serving.response import ServResponse
@@ -39,25 +39,27 @@ def make_request_with_cookies(cookie_header: str | None = None) -> Request:
     return Request(scope)
 
 
-def test_inmemory_session_provider_create_update_invalidate():
+@pytest.mark.asyncio
+async def test_inmemory_session_provider_create_update_invalidate():
     # Use a DI container so method calls can resolve dependencies
     registry = get_registry()
     container = registry.create_container()
     container.add(CredentialProvider, DummyCredentialProvider())
     provider = container.call(InMemorySessionProvider)
 
-    token = provider.create_session()
+    token = await provider.create_session()
     assert token.startswith("tok-")
 
-    provider.update_session(token, {"a": 1, "b": None})
-    data = provider.get_session(token)
+    await provider.update_session(token, {"a": 1, "b": None})
+    data = await provider.get_session(token)
     assert data == {"a": 1, "b": None}
 
-    provider.invalidate_session(token)
-    assert provider.get_session(token) is None
+    await provider.invalidate_session(token)
+    assert await provider.get_session(token) is None
 
 
-def test_session_load_save_invalidate_sets_cookie_and_persists():
+@pytest.mark.asyncio
+async def test_session_load_save_invalidate_sets_cookie_and_persists():
     registry = get_registry()
     handle_session_types.register_hook(registry)
     container = registry.create_container()
@@ -72,7 +74,7 @@ def test_session_load_save_invalidate_sets_cookie_and_persists():
     provider = container.call(InMemorySessionProvider)
     container.add(SessionProvider, provider)
 
-    session = container.call(Session.load_session)
+    session = await container.call(Session.load_session)
     assert isinstance(session, Session)
     assert session.token
 
@@ -82,12 +84,13 @@ def test_session_load_save_invalidate_sets_cookie_and_persists():
     # Persist data, including None values
     session["user_id"] = "u123"
     session["maybe_none"] = None
-    session.save()
-    assert container.call(provider.get_session, session.token) == {"user_id": "u123", "maybe_none": None}
+    await session.save()
+    data = await container.call(provider.get_session, session.token)
+    assert data == {"user_id": "u123", "maybe_none": None}
 
     # Invalidate clears provider storage
-    session.invalidate()
-    assert container.call(provider.get_session, session.token) is None
+    await session.invalidate()
+    assert await container.call(provider.get_session, session.token) is None
 
 
 # Additional integration of Session via injector is exercised in runtime tests.

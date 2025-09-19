@@ -1,10 +1,13 @@
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from serving.serv import Serv
 
 
-def test_session_provider_wires_after_auth(tmp_path: Path):
+@pytest.mark.asyncio
+async def test_session_provider_wires_after_auth(tmp_path: Path):
     yaml = """
 environment: dev
 
@@ -25,5 +28,5 @@ session:
     # Should be able to create a session token via provider
     from serving.session import SessionProvider as _SP
     sp = serv.container.get(_SP)
-    token = serv.container.call(sp.create_session)
+    token = await serv.container.call(sp.create_session)
     assert isinstance(token, str) and token

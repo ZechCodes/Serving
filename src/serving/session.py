@@ -16,19 +16,19 @@ from bevy import get_container
 class SessionProvider(Protocol):
     """Protocol for session providers."""
 
-    def create_session(self) -> str:
+    async def create_session(self) -> str:
         """Create a new session and return its token."""
         ...
 
-    def update_session(self, token: str, values: dict[str, Any]) -> None:
+    async def update_session(self, token: str, values: dict[str, Any]) -> None:
         """Update the session data with provided values."""
         ...
 
-    def invalidate_session(self, token: str) -> None:
+    async def invalidate_session(self, token: str) -> None:
         """Invalidate the session and remove its data."""
         ...
 
-    def get_session(self, token: str) -> dict[str, Any] | None:
+    async def get_session(self, token: str) -> dict[str, Any] | None:
         """Retrieve the current session data for the token, or None if not found."""
         ...
 
@@ -84,19 +84,19 @@ class InMemorySessionProvider:
         self._cred = credential_provider
         self._sessions: dict[str, dict[str, Any]] = {}
 
-    def create_session(self) -> str:
+    async def create_session(self) -> str:
         token = self._cred.create_session_token()
         self._sessions[token] = {}
         return token
 
-    def update_session(self, token: str, values: dict[str, Any]) -> None:
+    async def update_session(self, token: str, values: dict[str, Any]) -> None:
         if token in self._sessions:
             self._sessions.setdefault(token, {}).update(values)
 
-    def invalidate_session(self, token: str) -> None:
+    async def invalidate_session(self, token: str) -> None:
         self._sessions.pop(token, None)
 
-    def get_session(self, token: str) -> dict[str, Any] | None:
+    async def get_session(self, token: str) -> dict[str, Any] | None:
         # Validate the token format/signature if the provider supports it
         validator = getattr(self._cred, "validate_session_token", None)
         if callable(validator) and not validator(token):
@@ -140,13 +140,13 @@ class Session:
     def token(self) -> str:
         return self._token
 
-    def save(self) -> None:
+    async def save(self) -> None:
         """Persist current state to the provider."""
-        self._provider.update_session(self._token, self._data)
+        await self._provider.update_session(self._token, self._data)
 
-    def invalidate(self) -> None:
+    async def invalidate(self) -> None:
         """Invalidate session and clear client cookie."""
-        self._provider.invalidate_session(self._token)
+        await self._provider.invalidate_session(self._token)
         # Try to clear cookie via response; fall back silently if not in a request context
         try:
             # Avoid ensure_request_lifecycle wrapper to support test contexts
@@ -166,7 +166,7 @@ class Session:
     @classmethod
     @auto_inject
     @injectable
-    def load_session[
+    async def load_session[
         T: "Session"
     ](
         cls: type[T],
@@ -182,10 +182,10 @@ class Session:
         data: dict[str, Any] | None = None
 
         if token:
-            data = provider.get_session(token)
+            data = await provider.get_session(token)
 
         if not token or data is None:
-            token = provider.create_session()
+            token = await provider.create_session()
             # Try to set cookie via response; fall back silently if not in a request context
             try:
                 resp = get_container().get(ServResponse)

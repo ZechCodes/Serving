@@ -3,6 +3,7 @@ import inspect
 from typing import Annotated, get_args, get_origin, TypeAliasType
 
 from bevy import Container
+from bevy.context_vars import global_container
 from bevy.hooks import hooks
 from starlette.requests import Request
 from tramp.optionals import Optional
@@ -127,8 +128,14 @@ async def handle_session_types(container: Container, dependency: type, context: 
     except (TypeError, AttributeError):
         return Optional.Nothing()
 
-    # Build or load the request session via classmethod
-    instance = await container.call(dependency.load_session)
+    # Build or load the request session via classmethod. When decorated with
+    # @auto_inject the wrapper re-enters container.call(), so unwrap to avoid
+    # triggering the wrapper again inside the hook.
+    token = global_container.set(container)
+    try:
+        instance = await dependency.load_session()
+    finally:
+        global_container.reset(token)
     container.add(dependency, instance)
     return Optional.Some(instance)
 
