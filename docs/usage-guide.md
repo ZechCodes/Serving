@@ -255,13 +255,40 @@ async def login(...) -> JSON:
 
 `ServResponse` (injected automatically) also exposes `.cancel()` and `.response_override` if you need to short-circuit handler execution.
 
-## 8. Testing
+## 8. Resource Cleanup with Exit Stacks
+
+Serving manages two async exit stacks so you can register cleanups without wiring your own context managers:
+
+- **Request scoped** – `ServMiddleware` pushes an `AsyncExitStack` into each request branch. Inject it as `AsyncExitStack` when you need to tie resources to the lifetime of the request (temporary files, streaming clients, etc.). Everything you add with `push_async_callback` or `enter_async_context` runs once the response finishes.
+
+```python
+from contextlib import AsyncExitStack
+
+@router.post("/upload")
+async def upload(stack: AsyncExitStack) -> JSON:
+    temp = await stack.enter_async_context(make_tempfile())
+    ...  # write to temp
+    return {"stored": temp.name}
+```
+
+- **Application scoped** – the root container registers an `AsyncExitStack` under the qualifier `"app"`. Grab it once during startup to manage background workers or connections that should close on shutdown.
+
+```python
+from contextlib import AsyncExitStack
+from serving.serv import APP_EXIT_STACK_QUALIFIER
+
+serv = Serv(...)
+app_stack = serv.container.get(AsyncExitStack, qualifier=APP_EXIT_STACK_QUALIFIER)
+app_stack.push_async_callback(stop_background_worker)
+```
+
+## 9. Testing
 
 - **End-to-end**: create a temporary directory, write a minimal `serving.test.yaml`, instantiate `Serv`, and drive it with `starlette.testclient.TestClient` or HTTPX.
 - **Unit tests**: create a registry with `get_registry()`, add specific instances to a container branch, and call functions with `container.call` (sync) or `await container.call` (async).
 - Remember to await session and form methods in tests, just like you do in routes.
 
-## 9. Return Types & Rendering
+## 10. Return Types & Rendering
 
 Serving inspects the annotated return type of your endpoint and converts the result automatically. Import the shortcuts from `serving.types`:
 
@@ -287,7 +314,7 @@ async def home() -> Jinja2:
 
 If you need full control you can still return a Starlette `Response` (StreamingResponse, FileResponse, etc.) or raise an HTTPException.
 
-## 10. Release Workflow (Optional)
+## 11. Release Workflow (Optional)
 
 1. Update the version in `pyproject.toml`.
 2. Build artifacts locally if you want to inspect them (`python -m build`).
