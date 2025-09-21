@@ -69,6 +69,26 @@ session:
 
 See [Sessions](sessions.md) for details.
 
+## Events
+
+Register event handlers that the `EventManager` will invoke when you trigger an event.
+
+```yaml
+events:
+  app.startup:
+    - myapp.events:log_startup
+    - handler: myapp.events:notify_admins
+      params:
+        channel: "ops"
+  user.created:
+    - myapp.events:send_welcome_email
+```
+
+- Entries are keyed by event name; each value can be a list of handlers or a single handler string.
+- Each handler may be a string (`module:callable`) or a mapping with `handler` and optional `params` for keyword arguments.
+
+Read the usage guide for an example of triggering events from within routes.
+
 ## Static Assets (Dev)
 
 Serving mounts a named static route so you can use Starlette’s `url_for('static', path='...')` in templates across all environments.

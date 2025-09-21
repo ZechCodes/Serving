@@ -4,4 +4,4 @@ from serving.forms import Form, CSRFProtection
 from serving.session import Session
 
 __all__ = ["Serv", "Form", "CSRFProtection", "Session"]
-__version__ = "0.1.0"
+__version__ = "0.1.1a9"

@@ -7,12 +7,14 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from serving.serv_middleware import ServMiddleware
+from serving.events import EventManager
 
 
 class _DummyServ:
     def __init__(self, registry: Registry, container):
         self.registry = registry
         self.container = container
+        self.event_manager = EventManager(container)
 
 
 @pytest.mark.asyncio

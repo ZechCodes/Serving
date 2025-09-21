@@ -12,9 +12,10 @@ Serving is a small ASGI web framework built on Starlette with first‑class depe
 - YAML configuration with typed `ConfigModel`s (including collections)
 - Lightweight routing decorator; return‑type‑based responses
 - Forms + CSRF with Jinja2 templates
-- Themed error pages with dev‑mode details
+- Themed error pages with dev-mode details
 - Simple CLI wrapper around Uvicorn
-- Pluggable sessions with DI‑friendly access
+- Pluggable sessions with DI-friendly access
+- Configurable event system for app/request triggers
 - Static asset mount in dev compatible with `url_for('static', ...)`
 
 ## 🚀 Quick Start

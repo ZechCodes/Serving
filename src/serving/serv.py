@@ -35,6 +35,7 @@ from serving.router import RouterConfig, Router
 from serving.session import SessionConfig, SessionProvider, Session
 from serving.serv_middleware import ServMiddleware
 from serving.csrf_middleware import CSRFMiddleware
+from serving.events import EventManager
 
 
 APP_EXIT_STACK_QUALIFIER = "app"
@@ -116,8 +117,10 @@ class Serv:
         handle_session_param_types.register_hook(self.registry)
 
         self.container = self.registry.create_container()
+        self.event_manager = EventManager(self.container)
         self._app_exit_stack = AsyncExitStack()
         self.container.add(AsyncExitStack, self._app_exit_stack, qualifier=APP_EXIT_STACK_QUALIFIER)
+        self.container.add(EventManager, self.event_manager)
         with self.container:
             # Determine environment
             self.environment = self._get_environment(environment)
@@ -131,6 +134,9 @@ class Serv:
 
             # Configure sessions (optional)
             self._configure_session()
+
+            # Configure events (optional)
+            self._configure_events()
 
             self.templates = Jinja2Templates(directory=self.container.get(TemplatesConfig).directory)
             self.container.add(self.templates)
@@ -198,6 +204,14 @@ class Serv:
         self.container.add(SessionProvider, provider)
 
         # Session type will be provided on-demand via injector; no need to pre-register
+
+    def _configure_events(self) -> None:
+        """Configure application-level event handlers from configuration."""
+        events_config = self.config.get("events") if hasattr(self, "config") else []
+        handlers = EventManager.parse_config(events_config or [])
+        for event, specs in handlers.items():
+            for spec in specs:
+                self.event_manager.register(event, spec)
 
     def _load_configuration(self, working_directory: str | Path | None) -> None:
         """Load configuration from the specified working directory or in the current working directory. Which config

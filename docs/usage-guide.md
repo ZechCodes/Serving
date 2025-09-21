@@ -255,7 +255,39 @@ async def login(...) -> JSON:
 
 `ServResponse` (injected automatically) also exposes `.cancel()` and `.response_override` if you need to short-circuit handler execution.
 
-## 8. Resource Cleanup with Exit Stacks
+## 8. Events
+
+Serving exposes an `EventManager` so you can broadcast domain events from anywhere in the app.
+
+- Configure handlers under `events` in your YAML. Keys are event names and each value is a list (or single string) of handlers.
+- Inject `EventManager` into routes or background tasks and call `await events.trigger("event.name", **payload)`.
+- Register additional listeners programmatically with `events.register("event.name", handler, params={...})`.
+
+```yaml
+events:
+  app.startup:
+    - myapp.events:setup_metrics
+    - handler: myapp.events:notify_admins
+      params:
+        channel: "ops"
+  user.created:
+    - myapp.events:send_welcome_email
+```
+
+```python
+from serving.events import EventManager
+from serving.types import JSON
+
+@router.post("/users")
+async def create_user(events: EventManager) -> JSON:
+    user = {...}
+    await events.trigger("user.created", user=user)
+    return user
+```
+
+Request-level managers propagate events up to the application manager, so app-wide listeners declared in configuration always run.
+
+## 9. Resource Cleanup with Exit Stacks
 
 Serving manages two async exit stacks so you can register cleanups without wiring your own context managers:
 
@@ -282,13 +314,13 @@ app_stack = serv.container.get(AsyncExitStack, qualifier=APP_EXIT_STACK_QUALIFIE
 app_stack.push_async_callback(stop_background_worker)
 ```
 
-## 9. Testing
+## 10. Testing
 
 - **End-to-end**: create a temporary directory, write a minimal `serving.test.yaml`, instantiate `Serv`, and drive it with `starlette.testclient.TestClient` or HTTPX.
 - **Unit tests**: create a registry with `get_registry()`, add specific instances to a container branch, and call functions with `container.call` (sync) or `await container.call` (async).
 - Remember to await session and form methods in tests, just like you do in routes.
 
-## 10. Return Types & Rendering
+## 11. Return Types & Rendering
 
 Serving inspects the annotated return type of your endpoint and converts the result automatically. Import the shortcuts from `serving.types`:
 
@@ -314,7 +346,7 @@ async def home() -> Jinja2:
 
 If you need full control you can still return a Starlette `Response` (StreamingResponse, FileResponse, etc.) or raise an HTTPException.
 
-## 11. Release Workflow (Optional)
+## 12. Release Workflow (Optional)
 
 1. Update the version in `pyproject.toml`.
 2. Build artifacts locally if you want to inspect them (`python -m build`).

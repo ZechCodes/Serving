@@ -6,6 +6,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from serving.response import ServResponse
+from serving.events import EventManager
 
 if TYPE_CHECKING:
     from serving.serv import Serv
@@ -20,6 +21,7 @@ class ServMiddleware(BaseHTTPMiddleware):
         async with AsyncExitStack() as request_exit_stack:
             with self.serv.registry, self.serv.container.branch() as container:
                 container.add(AsyncExitStack, request_exit_stack)
+                container.add(EventManager, self.serv.event_manager.child(container))
                 container.add(Request, request)
                 container.add(
                     _response := ServResponse()
@@ -42,7 +44,6 @@ class ServMiddleware(BaseHTTPMiddleware):
                     response.status_code = _response.status_code
 
                 return response
-
 
 
 
