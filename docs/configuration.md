@@ -76,18 +76,30 @@ Register event handlers that the `EventManager` will invoke when you trigger an 
 ```yaml
 events:
   app.startup:
-    - myapp.events:log_startup
-    - handler: myapp.events:notify_admins
+    - handler: myapp.events:log_startup
       params:
-        channel: "ops"
+        label: "startup"
+  app.shutdown:
+    - handler: myapp.events:log_shutdown
+      params:
+        label: "shutdown"
   user.created:
     - myapp.events:send_welcome_email
+  request.finish:
+    - handler: myapp.events:collect_metrics
+      params:
+        label: "finish"
 ```
 
 - Entries are keyed by event name; each value can be a list of handlers or a single handler string.
 - Each handler may be a string (`module:callable`) or a mapping with `handler` and optional `params` for keyword arguments.
+- Built-in events emitted by Serving:
+  - `app.startup` — fired during the Starlette startup sequence.
+  - `app.shutdown` — fired during the shutdown sequence before exit stacks close.
+  - `request.start` — fired before a request handler begins execution.
+  - `request.finish` — fired after a response is produced (response may be `None` if an error occurs).
 
-Read the usage guide for an example of triggering events from within routes.
+Read the usage guide for examples of triggering events from within routes.
 
 ## Static Assets (Dev)
 

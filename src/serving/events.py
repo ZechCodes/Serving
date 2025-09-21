@@ -99,20 +99,22 @@ class EventManager:
         if not config:
             return handlers
 
-        for event, entries in config.items():
-            if isinstance(entries, str):
-                handlers[event].append(HandlerSpec(entries, {}))
-                continue
+        for event, raw_entries in config.items():
+            if isinstance(raw_entries, str):
+                entries_iterable = [raw_entries]
+            elif isinstance(raw_entries, Mapping):
+                entries_iterable = [raw_entries]
+            elif isinstance(raw_entries, Iterable):
+                entries_iterable = list(raw_entries)
+            else:
+                raise ValueError("Event handlers for each key must be a string, mapping, or iterable")
 
-            if not isinstance(entries, Iterable):
-                raise ValueError("Event handlers for each key must be an iterable or string")
-
-            for entry in entries:
+            for entry in entries_iterable:
                 if isinstance(entry, str):
                     handlers[event].append(HandlerSpec(entry, {}))
                     continue
 
-                if not isinstance(entry, dict) or "handler" not in entry:
+                if not isinstance(entry, Mapping) or "handler" not in entry:
                     raise ValueError("Event configuration dictionaries must include a 'handler'")
 
                 params = entry.get("params", {}) or {}

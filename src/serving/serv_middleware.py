@@ -21,30 +21,37 @@ class ServMiddleware(BaseHTTPMiddleware):
         async with AsyncExitStack() as request_exit_stack:
             with self.serv.registry, self.serv.container.branch() as container:
                 container.add(AsyncExitStack, request_exit_stack)
-                container.add(EventManager, self.serv.event_manager.child(container))
+                events = self.serv.event_manager.child(container)
+                container.add(EventManager, events)
                 container.add(Request, request)
                 container.add(
                     _response := ServResponse()
                 )
 
-                _response.running_coroutine = get_running_loop().create_task(call_next(request))
+                await events.trigger("request.start", request=request)
+
+                response = None
                 try:
-                    response = await _response.running_coroutine
-                except CancelledError:
-                    if _response.response_override is None:
-                        raise
+                    _response.running_coroutine = get_running_loop().create_task(call_next(request))
+                    try:
+                        response = await _response.running_coroutine
+                    except CancelledError:
+                        if _response.response_override is None:
+                            raise
 
-                    return _response.response_override
-                else:
-                    if _response.response_override is not None:
-                        return _response.response_override
+                        response = _response.response_override
+                    else:
+                        if _response.response_override is not None:
+                            response = _response.response_override
 
-                response.headers.update(_response.headers)
-                if _response.status_code is not None:
-                    response.status_code = _response.status_code
+                    if response is not None:
+                        response.headers.update(_response.headers)
+                        if _response.status_code is not None:
+                            response.status_code = _response.status_code
 
-                return response
-
+                    return response
+                finally:
+                    await events.trigger("request.finish", request=request, response=response)
 
 
 

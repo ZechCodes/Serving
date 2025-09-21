@@ -287,6 +287,13 @@ async def create_user(events: EventManager) -> JSON:
 
 Request-level managers propagate events up to the application manager, so app-wide listeners declared in configuration always run.
 
+Built-in events emitted by Serving:
+
+- `app.startup` — fired during the Starlette startup sequence.
+- `app.shutdown` — fired during shutdown before exit stacks close.
+- `request.start` — fired before an endpoint begins executing.
+- `request.finish` — fired after the response is produced (response may be `None` if an error occurs).
+
 ## 9. Resource Cleanup with Exit Stacks
 
 Serving manages two async exit stacks so you can register cleanups without wiring your own context managers:

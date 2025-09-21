@@ -36,16 +36,12 @@ _app_events: list[tuple[str, dict]] = []
 _request_events: list[tuple[str, dict]] = []
 
 
-async def record_app_event(*, label: str):
-    _app_events.append((label, {}))
+async def record_app_event(*, label: str, **context):
+    _app_events.append((label, context))
 
 
-async def record_startup_event(*, flag: bool = False):
-    _app_events.append(("startup", {"flag": flag}))
-
-
-async def record_request_event(*, label: str):
-    _request_events.append((label, {}))
+async def record_request_event(*, label: str, **context):
+    _request_events.append((label, context))
 
 
 @pytest.fixture(autouse=True)
@@ -69,23 +65,30 @@ async def test_app_level_events(tmp_path: Path):
         session:
           session_provider: serving.session:InMemorySessionProvider
         events:
+          app.startup:
+            - handler: tests.serving.test_events:record_app_event
+              params:
+                label: startup
+          app.shutdown:
+            - handler: tests.serving.test_events:record_app_event
+              params:
+                label: shutdown
           user.created:
             - tests.serving.test_events:record_app_event
-          app.startup:
-            - handler: tests.serving.test_events:record_startup_event
-              params:
-                flag: true
         """
     )
 
     serv = Serv(working_directory=tmp_path, environment="dev")
     manager = serv.container.get(EventManager)
 
-    await manager.trigger("user.created", label="created")
-    await manager.trigger("app.startup")
+    await serv.app.router.startup()
+    assert ("startup", {}) in _app_events
 
+    await manager.trigger("user.created", label="created")
     assert ("created", {}) in _app_events
-    assert ("startup", {"flag": True}) in _app_events
+
+    await serv.app.router.shutdown()
+    assert ("shutdown", {}) in _app_events
 
 
 @pytest.mark.asyncio
@@ -100,8 +103,14 @@ async def test_request_event_manager_propagates(tmp_path: Path):
         session:
           session_provider: serving.session:InMemorySessionProvider
         events:
-          user.created:
-            - tests.serving.test_events:record_app_event
+          request.start:
+            - handler: tests.serving.test_events:record_app_event
+              params:
+                label: start-app
+          request.finish:
+            - handler: tests.serving.test_events:record_app_event
+              params:
+                label: finish-app
         """
     )
 
@@ -114,12 +123,20 @@ async def test_request_event_manager_propagates(tmp_path: Path):
     async def call_next(req):
         container = get_container()
         events = container.get(EventManager)
-        events.register("user.created", record_request_event)
-        await events.trigger("user.created", label="request")
+        events.register("request.finish", record_request_event, params={"label": "finish"})
         return Response("OK")
 
     response = await middleware.dispatch(request, call_next)
 
     assert response.status_code == 200
-    assert ("request", {}) in _request_events
-    assert ("request", {}) in _app_events
+    # finish events include both request and response
+    assert ("start-app", {"request": request}) in _app_events
+    finish_entry = next(item for item in _request_events if item[0] == "finish")
+    assert finish_entry[1]["request"] is request
+    assert isinstance(finish_entry[1]["response"], Response)
+
+    app_finish = next(item for item in _app_events if item[0] == "finish-app")
+    assert isinstance(app_finish[1]["request"], Request)
+    assert isinstance(app_finish[1]["response"], Response)
+
+    await serv.app.router.shutdown()

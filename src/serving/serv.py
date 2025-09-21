@@ -166,7 +166,8 @@ class Serv:
                 },
             )
 
-        self.app.add_event_handler("shutdown", self._app_exit_stack.aclose)
+        self.app.add_event_handler("startup", self._on_startup)
+        self.app.add_event_handler("shutdown", self._on_shutdown)
 
         # Store serv instance in app state for exception handlers
         self.app.state.serv = self
@@ -208,10 +209,19 @@ class Serv:
     def _configure_events(self) -> None:
         """Configure application-level event handlers from configuration."""
         events_config = self.config.get("events") if hasattr(self, "config") else []
-        handlers = EventManager.parse_config(events_config or [])
+        handlers = EventManager.parse_config(events_config or {})
         for event, specs in handlers.items():
             for spec in specs:
                 self.event_manager.register(event, spec)
+
+    async def _on_startup(self) -> None:
+        await self.event_manager.trigger("app.startup")
+
+    async def _on_shutdown(self) -> None:
+        try:
+            await self.event_manager.trigger("app.shutdown")
+        finally:
+            await self._app_exit_stack.aclose()
 
     def _load_configuration(self, working_directory: str | Path | None) -> None:
         """Load configuration from the specified working directory or in the current working directory. Which config
